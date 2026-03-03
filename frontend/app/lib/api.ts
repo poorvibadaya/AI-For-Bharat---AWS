@@ -9,6 +9,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  language?: string;          // language toggle at time of message creation
   agentTrace?: AgentTraceStep[];
   priceData?: PriceData;
 }

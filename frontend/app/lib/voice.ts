@@ -77,3 +77,88 @@ export function stopListening(): void {
     recognition = null;
   }
 }
+
+function getEnglishIndiaVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  return (
+    voices.find((v) => v.name === "Rishi") ||
+    voices.find((v) => v.name === "Veena") ||
+    voices.find((v) => v.lang === "en-IN") ||
+    voices.find((v) => v.name.toLowerCase().includes("india")) ||
+    voices.find((v) => v.lang.startsWith("en")) ||
+    null
+  );
+}
+
+function getPreferredVoice(language: string): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) return null;
+
+  if (language === "hi") {
+    // Try native Hindi-India voices first (requires OS Hindi language pack)
+    const hiVoice =
+      voices.find((v) => v.name === "Lekha") ||
+      voices.find((v) => v.lang === "hi-IN") ||
+      voices.find((v) => v.lang.startsWith("hi")) ||
+      null;
+    // Fall back to English-India voice — still produces audio even for Hindi text
+    return hiVoice ?? getEnglishIndiaVoice(voices);
+  } else {
+    // macOS: "Rishi" (newer) or "Veena" are English-India voices
+    return getEnglishIndiaVoice(voices);
+  }
+}
+
+export function speak(text: string, language: string, onEnd?: () => void): void {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+
+  const doSpeak = () => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = getPreferredVoice(language);
+
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+      // Slower, natural-sounding rate; slight pitch lift for Hindi
+      utterance.rate = voice.lang.startsWith("hi") ? 0.82 : 0.88;
+      utterance.pitch = voice.lang.startsWith("hi") ? 1.1 : 1.0;
+    }
+    // If no voice found at all, let the browser use its default (don't set lang —
+    // setting an unsupported lang causes silent failure in Chrome/Safari)
+    utterance.volume = 1.0;
+
+    if (onEnd) {
+      utterance.onend = onEnd;
+      utterance.onerror = onEnd;
+    }
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Chrome loads voices asynchronously — wait if the list is empty
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) {
+    const handler = () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", handler);
+      doSpeak();
+    };
+    window.speechSynthesis.addEventListener("voiceschanged", handler);
+    // Safety fallback in case voiceschanged never fires
+    setTimeout(() => {
+      window.speechSynthesis.removeEventListener("voiceschanged", handler);
+      doSpeak();
+    }, 500);
+  } else {
+    doSpeak();
+  }
+}
+
+export function stopSpeaking(): void {
+  if (typeof window !== "undefined" && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+export function isSpeakingSupported(): boolean {
+  return typeof window !== "undefined" && "speechSynthesis" in window;
+}
